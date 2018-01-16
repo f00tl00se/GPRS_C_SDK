@@ -112,11 +112,11 @@ void EventDispatch(API_Event_t* pEvent)
 void CreateSem(HANDLE* sem_)
 {
     *sem_ = 0;
+    // *sem = OS_CreateSemaphore(0);
 }
 
 void WaitSem(HANDLE* sem_)
 {
-    // *sem = OS_CreateSemaphore(0);
     // OS_WaitForSemaphore(*sem,OS_WAIT_FOREVER);
     // OS_DeleteSemaphore(*sem);
     // *sem = NULL;
@@ -149,7 +149,7 @@ bool Write(uint8_t* data, uint16_t len)
     Trace(2,"Write");
     CreateSem(&sem);
     int ret = Socket_TcpipWrite(socketFd,data,len);
-    if(ret < 0)
+    if(ret <= 0)
     {
         Trace(2,"socket write fail:%d",ret);
         return false;
@@ -177,6 +177,7 @@ bool Close()
 void socketTestTask(void* param)
 {
     int failCount = 0;
+    int count = 0;
     WaitSem(&sem);
     Trace(2,"sem:%d,%p",(int)sem,(void*)sem);
     Trace(1,"start connect now");
@@ -202,6 +203,7 @@ void socketTestTask(void* param)
                 Trace(2,"write fail");
             }
         }
+        Trace(2,"count:%d",count++);
         OS_Sleep(5000);
     }
 }
