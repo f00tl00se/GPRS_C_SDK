@@ -1,12 +1,13 @@
 #ifndef __API_INC_TIME_H__
 #define __API_INC_TIME_H__
 
-#include <cs_types.h>
+#include "stdbool.h"
+#include "stdint.h"
 
 
 #ifndef _TIME_T_DEFINED
 #define _TIME_T_DEFINED
-    typedef long         time_t;
+    typedef int32_t  time_t;
 #endif
 
 typedef long         clock_t;
@@ -21,12 +22,29 @@ typedef struct tm{
     int tm_wday;        /* 一周中的第几天，范围从 0 到 6    */
     int tm_yday;        /* 一年中的第几天，范围从 0 到 365    */
     int tm_isdst;       /* 夏令时                */
- }tm;
+ }tm_t;
+
+ typedef struct
+{
+    uint16_t year;
+    uint8_t  month;
+    uint8_t  dayOfWeek;
+    uint8_t  day;
+    uint8_t  hour;
+    uint8_t  minute;
+    uint8_t  second;
+    uint16_t milliseconds;
+} TIME_System_t;
 
 typedef struct timeval {
-    long long    tv_sec;         /* seconds */
-    long         tv_usec;        /* and microseconds!!!but millisecond instead here(实际数据是ms)!! */
+    time_t    tv_sec;            /* seconds */
+    long      tv_usec;           /* microseconds */
 }timeval_t;
+
+struct timespec {
+    time_t tv_sec;
+    long tv_nsec;
+};
 
 typedef struct timezone {
     int tz_minuteswest;
@@ -41,6 +59,7 @@ typedef struct{
     uint8_t  minute;
     uint8_t  second;
     int8_t   timeZone;
+    int8_t   timeZoneMinutes;
 }RTC_Time_t;
 
 #define CLOCKS_PER_SEC   (16384.0)

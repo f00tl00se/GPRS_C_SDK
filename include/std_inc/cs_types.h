@@ -40,17 +40,17 @@ typedef short                       s16;
 typedef long                        s32;
 
 
-typedef char                        ascii;
-typedef unsigned char               byte;           /*  unsigned 8-bit data     */
-typedef unsigned short              word;           /*  unsigned 16-bit data    */
-typedef unsigned long               dword;          /*  unsigned 32-bit data    */
+// typedef char                        ascii;
+// typedef unsigned char               byte;           /*  unsigned 8-bit data     */
+// typedef unsigned short              word;           /*  unsigned 16-bit data    */
+// typedef unsigned long               dword;          /*  unsigned 32-bit data    */
 typedef unsigned char               uint8;
 typedef signed char                 int8;
 typedef unsigned short int          uint16;
 typedef signed short int            int16;
 typedef unsigned int                uint32;
 typedef signed int                  int32;
-typedef char                        boolean;
+// typedef char                        boolean;
 
 #ifndef _USERGEN
 #ifndef size_t
@@ -71,9 +71,9 @@ typedef unsigned long               uintmax_t;
 typedef long                        intmax_t;
 #endif
 
-typedef unsigned long               UINT32;
+typedef unsigned int               UINT32;
 typedef unsigned short              UINT16;
-typedef long                        INT32;
+typedef int                        INT32;
 typedef short                       INT16;
 typedef unsigned char               UINT8;
 typedef signed char                        INT8;
@@ -91,7 +91,10 @@ typedef char                        CHAR;
 typedef unsigned char               BYTE;
 typedef float                       FLOAT;
 typedef double                      DOUBLE;
-typedef UINT32                      HANDLE;
+#ifndef TYPE_HANDLE
+#define TYPE_HANDLE
+typedef uint32_t                    HANDLE;
+#endif
 typedef UINT8*                      PUINT8;
 typedef UINT32*                     PUINT32;
 typedef INT32*                      PINT32;
@@ -237,11 +240,6 @@ typedef int         int32_t;
 #define __INT32_T__
 #endif
 
-#ifndef __U8_T__
-typedef unsigned char u8_t;
-#define __U8_T__
-#endif
-
 #ifndef __UINT8_T__
 typedef unsigned char   uint8_t;
 #define __UINT8_T__
@@ -252,20 +250,60 @@ typedef unsigned short  uint16_t;
 #define __UINT16_T__
 #endif
 
-#ifndef __U16_T__
-typedef unsigned short u16_t;
-#define __U16_T__
-#endif
-
-
 #ifndef __UINT32_T__
 typedef unsigned int    uint32_t;
 #define __UINT32_T__
 #endif
 
-typedef unsigned long long  uint64_t;
+
+#ifndef __U8_T__
+typedef unsigned char u8_t;
+#define __U8_T__
+#endif
+
+#ifndef __U16_T__
+typedef unsigned short u16_t;
+#define __U16_T__
+#endif
+
+#ifndef __U32_T__
+typedef unsigned int u32_t;
+#define __U32_T__
+#endif
+
+#ifndef __S8_T__
+typedef signed char s8_t;
+#define __S8_T__
+#endif
+
+#ifndef __S16_T__
+typedef signed short s16_t;
+#define __S16_T__
+#endif
+
+#ifndef __S32_T__
+typedef signed int s32_t;
+#define __S32_T__
+#endif
+
+#ifndef __INT64_T__
+#define __INT64_T__
 typedef long long   int64_t;
 #endif
+#ifndef __UINT64_T__
+#define __UINT64_T__
+typedef unsigned long long  uint64_t;
+#endif
+#ifndef __S64_T__
+#define __S64_T__
+typedef int64_t   s64_t;
+#endif
+#ifndef __U64_T__
+#define __U64_T__
+typedef uint64_t  u64_t;
+#endif
+
+#endif//#if !(defined(WIN32) || defined(_USERGEN))
 
 #if (!defined(WIN32) || defined(_USERGEN))
 #if defined(UNICODE)

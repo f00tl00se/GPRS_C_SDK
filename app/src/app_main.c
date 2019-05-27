@@ -14,26 +14,27 @@
 #include "api_os.h"
 #include "api_event.h"
 #include "api_debug.h"
+#include "api_hal_pm.h"
 
-#define AppMain_TASK_STACK_SIZE    (1024 * 2)
-#define AppMain_TASK_PRIORITY      1 
+#define AppMain_TASK_STACK_SIZE    (2048 * 2)
+#define AppMain_TASK_PRIORITY      0
+#define OTHERE_TASK_STACK_SIZE     (2048 * 2)
+#define OTHERE_TASK_PRIORITY       1
 HANDLE mainTaskHandle  = NULL;
 HANDLE otherTaskHandle = NULL;
 
 
-void LoopTask(VOID *pData)
+void LoopTask(void *pData)
 {
-    uint64_t count = 0;
+    int count = 0;
+    //wait for trace initilize complete
+    OS_Sleep(3000);
     while(1)
     {
-        ++count;
-        if(count == 3000)
-        {
-            count = 0;
-            Trace(1,"Test Test");
-            OS_Sleep(1000);
-            Trace(1,"Test Test2");
-        }
+        Trace(1, "Test Test%d",++count);
+
+        //Use event drive or sleep some time here
+        OS_Sleep(2000);
     }
 }
 void EventDispatch(API_Event_t* pEvent)
@@ -53,27 +54,29 @@ void EventDispatch(API_Event_t* pEvent)
 }
 
 
-void AppMainTask(VOID *pData)
+void AppMainTask(void *pData)
 {
     API_Event_t* event=NULL;
-    
-    otherTaskHandle = OS_CreateTask(LoopTask ,
-        NULL, NULL, AppMain_TASK_STACK_SIZE, AppMain_TASK_PRIORITY, 0, 0, "ohter Task");
-        
+
+    otherTaskHandle = OS_CreateTask(LoopTask,
+                                    NULL, NULL, OTHERE_TASK_STACK_SIZE, OTHERE_TASK_PRIORITY, 0, 0, "ohter Task");
     while(1)
     {
-        if(OS_WaitEvent(mainTaskHandle, &event, OS_TIME_OUT_WAIT_FOREVER))
+        if(OS_WaitEvent(mainTaskHandle, (void**)&event, OS_TIME_OUT_WAIT_FOREVER))
         {
+            PM_SetSysMinFreq(PM_SYS_FREQ_178M);//set back system min frequency to 178M or higher(/lower) value
             EventDispatch(event);
             OS_Free(event->pParam1);
             OS_Free(event->pParam2);
             OS_Free(event);
+            PM_SetSysMinFreq(PM_SYS_FREQ_32K);//release system freq to enter sleep mode to save power,
+                                              //system remain runable but slower, and close eripheral not using
         }
     }
 }
 void app_Main(void)
 {
     mainTaskHandle = OS_CreateTask(AppMainTask ,
-        NULL, NULL, AppMain_TASK_STACK_SIZE, AppMain_TASK_PRIORITY, 0, 0, "init Task");
+                                   NULL, NULL, OTHERE_TASK_PRIORITY, AppMain_TASK_PRIORITY, 0, 0, "init Task");
     OS_SetUserMainHandle(&mainTaskHandle);
 }

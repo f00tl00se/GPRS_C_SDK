@@ -5,7 +5,7 @@
  * @Author: Neucrack 
  * @Date: 2017-10-26 10:45:00 
  * @Last Modified by: Neucrack
- * @Last Modified time: 2017-11-02 12:50:48
+ * @Last Modified time: 2018-06-14 19:51:56
  */
 
 
@@ -119,12 +119,15 @@ void OS_UnlockMutex(HANDLE mutex);
 /// \return void , 
 #define OS_SetUserMainHandle                          CSDK_FUNC(OS_SetUserMainHandle)
 
+#define OS_GetUserMainHandle                          CSDK_FUNC(OS_GetUserMainHandle)
+
+
 /// \brief  void                OS_CreateTask)(PTASK_FUNC_T pTaskEntry,PVOID pParameter,PVOID pStackAddr,UINT16 nStackSize
 //                                         ,UINT8 nPriority,UINT16 nCreationFlags,UINT16 nTimeSlice,PCSTR pTaskName);
 /// \param  PTASK_FUNC_T pTaskEntry , 
 /// \param  PVOID pParameter  , the pEvent pParameter pointer
-/// \param  PVOID pStackAddr  , the pEvent pStackAddr pointer
-/// \param  UINT16 nStackSize  , the stack size of task
+/// \param  PVOID pStackAddr  , the pEvent pStackAddr pointer,reserved, only NULL
+/// \param  UINT16 nStackSize  , the stack size of task, unit: Word(4 Bytes), so the actual size is nStackSize*4 Bytes
 /// \param  UINT8 nPriority  , the priority of task
 /// \param  UINT16 nCreationFlags  , 
 /// \param  UINT16 nTimeSlice  , 
@@ -252,6 +255,8 @@ void OS_UnlockMutex(HANDLE mutex);
 /// \return void , 
 #define OS_UnlockMutex                              CSDK_FUNC(OS_UnlockMutex)
 
+/// \brief  bool OS_GetTaskInfo(HANDLE pHTask, OS_Task_Info_t* taskInfo);
+#define OS_GetTaskInfo                              CSDK_FUNC(OS_GetTaskInfo)
 
 /**
   *

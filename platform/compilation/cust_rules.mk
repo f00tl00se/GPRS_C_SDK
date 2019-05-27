@@ -7,6 +7,9 @@ ifeq "$(strip $(AM_MODEL))" ""
 endif
 include ${SOFT_WORKDIR}/platform/${strip ${AM_MODEL}}/memd.def
 
+# use bash but sh as default shell
+SHELL := /bin/bash
+
 ########################################################################
 # MAKELEVEL=0 Things to do only once
 # Variables that are defined only once should be in this section and 
@@ -16,10 +19,30 @@ include ${SOFT_WORKDIR}/platform/${strip ${AM_MODEL}}/memd.def
 # 	echo "#####  $(MAKELEVEL)  ########################################"     
 ifeq ($(MAKELEVEL),0)
 
+BUILD_HOST_TYPE_CMD := "case `uname` in Linux*) echo LINUX;; CYGWIN*) echo CYGWIN;; Windows*) echo WINDOWS;; *) echo UNKNOWN;; esac"
+export BUILD_HOST_TYPE := $(shell sh -c $(BUILD_HOST_TYPE_CMD))
+
+ifeq "$(BUILD_HOST_TYPE)" "UNKNOWN"
+BUILD_HOST_UNAME := $(shell uname)
+$(error "$(BUILD_HOST_UNAME) is unsupported(LINUX, CYGWIN, WINDOWS)")
+endif
+
+ifeq "${BUILD_HOST_TYPE}" "LINUX"
+	export COLOR_YELLOW=echo -ne "\033[0;33m";
+	export COLOR_NORMAL=echo -ne "\033[0m";
+	export COLOR_BOLD=echo -ne "\033[1m";
+	export COLOR_GREEN=echo -ne "\033[1;32m";
+	export COLOR_PURPLE=echo -ne "\033[1;35m";
+	export COLOR_CYAN=echo -ne "\033[1;36m";
+endif
+
 # Check if CT_RELEASE is defined and valid
 ifeq "$(strip $(CT_RELEASE))" ""
     export CT_RELEASE := debug
 endif
+
+export tepath := ${SOFT_WORKDIR}/platform/compilation/
+
 VALID_RELEASE_LIST :=release debug
 SELECTED_RELEASE := $(filter $(VALID_RELEASE_LIST), $(CT_RELEASE))
 ifeq "$(SELECTED_RELEASE)" ""
@@ -34,7 +57,7 @@ export CROSS ?= mips-elf-
 export AS := $(CROSS)as
 export CC := $(CROSS)gcc
 export CPP := ${CC} -E
-export C++ := $(CROSS)g++ 
+export CXX := $(CROSS)g++
 export AR := $(CROSS)ar
 export OBJCOPY := $(CROSS)objcopy
 export OBJDUMP := $(CROSS)objdump
@@ -114,6 +137,7 @@ ifneq "${AM_MODEL}" ""
 endif
 
 export LODCOMBINE_TOOL := ${SOFT_WORKDIR}/platform/compilation/lodCombine.pl
+export LODPYCOMBINE_TOOL := ${SOFT_WORKDIR}/platform/compilation/lodtool.py
 
 ########################################################################
 # End of MAKELEVEL=0. Things to do only once.
@@ -188,11 +212,10 @@ BINARY_LIBRARY_PATH += ${foreach MODULE_PATH, ${BINARY_LIBS}, -L${SOFT_WORKDIR}/
 BINARY_LIBRARY_FILES += ${foreach MODULE_PATH, ${BINARY_LIBS}, ${SOFT_WORKDIR}/${MODULE_PATH}/${LIB_DIR}/lib${notdir ${MODULE_PATH}}_${CT_RELEASE}.a }
 
 # Local libs path and files : in $SOFT_WORKDIR
-LOCAL_ADD_LIBRARY_PATH := ${foreach MODULE_PATH, ${LOCAL_LIB}, -L${SOFT_WORKDIR}/${dir ${MODULE_PATH}}}
+LOCAL_ADD_LIBRARY_PATH := ${foreach MODULE_PATH, ${LOCAL_LIBS}, -L${SOFT_WORKDIR}/${dir ${MODULE_PATH}}}
 # LOCAL_LIBS is already a file list:
-#LOCAL_ADD_LIBRARY_FILES := ${foreach MODULE_PATH, ${LOCAL_LIB}, ${SOFT_WORKDIR}/${MODULE_PATH}/${notdir ${MODULE_PATH}}}
-LOCAL_ADD_LIBRARY_FILES := ${foreach FILE_PATH, ${LOCAL_LIB}, ${SOFT_WORKDIR}/${FILE_PATH}}
-
+#LOCAL_ADD_LIBRARY_FILES := ${foreach MODULE_PATH, ${LOCAL_LIBS}, ${SOFT_WORKDIR}/${MODULE_PATH}/${notdir ${MODULE_PATH}}}
+LOCAL_ADD_LIBRARY_FILES := ${foreach FILE_PATH, ${LOCAL_LIBS}, ${SOFT_WORKDIR}/${FILE_PATH}}
 # Full libraries path used for linking -L<path_to_library>
 FULL_LIBRARY_PATH := ${SRC_LIBRARY_PATH} ${BINARY_LIBRARY_PATH} ${LOCAL_ADD_LIBRARY_PATH}
 # List all library files for dependencies checking full_path+"lib"+libname.a
@@ -201,7 +224,15 @@ FULL_LIBRARY_FILES := ${SRC_LIBRARY_FILES} ${BINARY_LIBRARY_FILES} ${LOCAL_ADD_L
 FULL_LIBRARY_EXT := ${foreach MODULE_PATH, ${FULL_LIBRARY_FILES}, -l${patsubst lib%,%,${basename ${notdir ${MODULE_PATH}}}}}
 
 # Used when building a toplevel with submodules only : all object files from submodules that go into the lib
-ifeq "$(IS_TOP_LEVEL)" "yes"
+ifneq "$(strip $(IS_CONTAIN_SUB_MODULE))" "yes"
+	IS_TOP_LEVEL_ = yes
+endif
+
+ifneq "$(strip $(IS_TOP_LEVEL))" "yes"
+	IS_TOP_LEVEL_ = yes
+endif
+
+ifeq "$(IS_TOP_LEVEL_)" "yes"
 FULL_LIBRARY_OBJECTS := ${foreach lib, ${LOCAL_MODULE_DEPENDS}, ${BUILD_ROOT}/${lib}/${OBJ_DIR}/${CT_RELEASE}/*.o} 
 endif
 
@@ -211,7 +242,11 @@ endif
 FULL_SRC_OBJECTS :=	${LOCAL_OBJS} \
 				    ${patsubst %.S,%.o,${S_SRC}}			\
 				    ${patsubst %.c,%.o,${C_SRC}}			\
-				    ${patsubst %.cpp,%.o,${C++_SRCD}}		
+					${patsubst %.cpp,%.o,${CXX_SRC}}		\
+					${patsubst src/%.s,%.o,${S_SRC_FILES}}		\
+					${patsubst src/%.c,%.o,${C_SRC_FILES}}		\
+				    ${patsubst src/%.cpp,%.o,${CPP_SRC_FILES}}		
+
 FULL_SRC_OBJECTS := ${foreach obj, ${FULL_SRC_OBJECTS},${OBJ_REL_PATH}/${obj}}
 
 ########################################################
@@ -222,7 +257,7 @@ FULL_SRC_OBJECTS := ${foreach obj, ${FULL_SRC_OBJECTS},${OBJ_REL_PATH}/${obj}}
 SRC_DIRS := ${foreach MODULE_PATH, ${SRC_LIBS}, ${MODULE_PATH}}
 
 # For all dependencies in SRC, rules to call make in dependency modules
-FULL_DEPENDENCY_COMPILE := ${foreach SUBDIR, ${SRC_DIRS}, echo && ${ECHO} "MAKE              ${SUBDIR}" && ${MAKE} -C ${SOFT_WORKDIR}/${SUBDIR} all && } echo
+FULL_DEPENDENCY_COMPILE := ${foreach SUBDIR, ${SRC_DIRS}, echo && printf "\n[MAKE]  %s\n" "${SUBDIR}" && ${MAKE} -C ${SOFT_WORKDIR}/${SUBDIR} all && } echo
 FULL_DEPENDENCY_CLEAN := ${foreach SUBDIR, ${SRC_DIRS}, ${MAKE} -C ${SOFT_WORKDIR}/${SUBDIR} cleanstem;}
 FULL_DEPENDENCY_ALLCLEAN := ${foreach SUBDIR, ${SRC_DIRS}, ${MAKE} -C ${SOFT_WORKDIR}/${SUBDIR} allcleanstem;}
 FULL_DEPENDENCY_DEPCLEAN := ${foreach SUBDIR, ${SRC_DIRS}, ${MAKE} -C ${SOFT_WORKDIR}/${SUBDIR} depcleanstem;}
@@ -318,8 +353,16 @@ endif
 MAP_FINAL := ${BAS_FINAL}.map
 HEX_FINAL := ${BAS_FINAL}.srec
 LODBASE   := ${BAS_FINAL}_
-LOD_FILE  := `cygpath -w $(LODBASE)flash.lod`
-BIN_FILE  := `cygpath -w $(LODBASE)flash.bin`
+ifeq "$(BUILD_HOST_TYPE)" "CYGWIN"
+	LOD_FILE := `cygpath -w $(LODBASE)flash.lod`
+	BIN_FILE := `cygpath -w $(LODBASE)flash.bin`
+else
+	# ifeq "$(BUILD_HOST_TYPE)" "WINDOWS"
+	LOD_FILE := $(LODBASE)flash.lod
+	BIN_FILE := $(LODBASE)flash.bin
+	# else
+	# endif
+endif
 CFG_FILE  := ${BAS_FINAL}.cfg
 
 
@@ -346,8 +389,19 @@ endif
 
 all: $(TOP_TARGET)
 
+ifeq ($(MAKELEVEL),0)
+
+lod:
+	${COLOR_YELLOW}
+	@echo "-- System Version : $(BUILD_HOST_TYPE)"
+	${COLOR_NORMAL}
+	@echo "---------------------------------------------------"
+	${MAKE} bin
+else
 lod:
 	${MAKE} bin
+endif
+
 
 .PHONY: targetgen
 TARGET_FILE := ${BUILD_ROOT}/targetgen
@@ -395,6 +449,7 @@ endif #AM_CONFIG_SUPPORT
 ifneq "${AM_PLT_LOD_FILE}" ""
 PLT_LOD_VERSION := $(shell echo ${AM_PLT_LOD_FILE} | sed 's/.*SW_V\([0-9]*\).*\.lod$$/B\1/')
 WITH_PLT_LOD_FILE := ${BAS_FINAL}_${PLT_LOD_VERSION}_${CT_RELEASE}.lod
+WITH_PLT_OTA_FILE := ${BAS_FINAL}_${PLT_LOD_VERSION}_${CT_RELEASE}_ota.lod
 CFG_Lod_File_WITH_PLT := `echo ${BAS_FINAL}_\`echo ${AM_PLT_LOD_FILE} | sed 's/.*SW_V\([0-9]*\).*\.lod$$/B\1/'\`.lod  | sed 's/.*\(SW_.*\.lod\)$$/\1/'`
 endif
 
@@ -518,26 +573,27 @@ ifeq ($(strip $(AM_SUBPROJ_SUPPORT)), TRUE)
 	${MAKE} AM_MAP_ZIP
 		
 else
-	find $(DES_CFP_FILE_DIR) -name "*.cfp" -exec rm {} \;
+	# find $(DES_CFP_FILE_DIR) -name "*.cfp" -exec rm {} \;
 	
-	@${ECHO} "CP  		  AUDIO CFP FILE......"
-	if [ $(AM_CFP_FILE_CNT) -gt 1 ]; then  \
-		${ECHO} "AUDIO CFG         There are $(AM_CFP_FILE_CNT) find audio cfp files."; \
-		exit 1; \
-	else \
-		if [ $(AM_CFP_FILE_CNT) -eq 1 ]; then \
-			cp -f ${AM_CFP_FILE_NAME} ${DES_CFP_FILE_DIR};\
-		else\
-			if [ $(AM_CFP_FILE_CNT) -eq 0 ]; then \
-				${ECHO} "AUDIO CFG         No audio cfp file"; \
-#				exit 1; \
-			fi;\
-		fi;\
-	fi;	
+#	 @${ECHO} "CP  		  AUDIO CFP FILE......"
+# 	if [ $(AM_CFP_FILE_CNT) -gt 1 ]; then  \
+# 		${ECHO} "AUDIO CFG         There are $(AM_CFP_FILE_CNT) find audio cfp files."; \
+# 		exit 1; \
+# 	else \
+# 		if [ $(AM_CFP_FILE_CNT) -eq 1 ]; then \
+# 			cp -f ${AM_CFP_FILE_NAME} ${DES_CFP_FILE_DIR};\
+# 		else\
+# 			if [ $(AM_CFP_FILE_CNT) -eq 0 ]; then \
+# 				${ECHO} "AUDIO CFG         No audio cfp file"; \
+# #				exit 1; \
+# 			fi;\
+# 		fi;\
+# 	fi;	
 	
-	@${ECHO} "SREC              ${LODBASE_NO_PATH}.srec for flash/romulator"
+	@${ECHO} "[SREC]              ${LODBASE_NO_PATH}.srec for flash/romulator"
 	${MAKE} targetgen
 	srecmap -c ${MAP_FILE} -m ${FLSH_MODEL} -b ${TARGET_FILE} ${HEX} ${LODBASE} ${STDOUT_NULL}
+	@${ECHO} "[LOD]               $(LOD_FILE)"
 
 ifeq ($(strip $(AM_CONFIG_SUPPORT)), TRUE)
 	@${ECHO}
@@ -606,24 +662,23 @@ ifneq "${AM_PLT_LOD_FILE}" ""
 endif
 else 
 ifneq "${AM_PLT_LOD_FILE}" ""
-	@${ECHO}
-	@${ECHO} "LODTOBIN  $(LOD_FILE)"
-	$(LOD_TO_BIN) ${LOD_FILE} -0
-	${ECHO}  "LODTOBIN          Sucessful"
-	@${ECHO} "LODCOMBINE        Combine user lod with Platform lod"
+	@${ECHO} "[LODCOMBINE]        Combine with Platform lod"
 	if [ -f $(LOD_FILE) ]; then                                                                 \
-		if [ -f $(AM_PLT_LOD_FILE) ]; then                                                       \
-			$(LODCOMBINE_TOOL) openat -l $(AM_PLT_LOD_FILE) -i $(LOD_FILE) -o $(WITH_PLT_LOD_FILE); \
+		if [ -f $(AM_PLT_LOD_FIFLE) ]; then  \
+			python $(LODPYCOMBINE_TOOL) merge --platform $(AM_PLT_LOD_FILE) --app $(LOD_FILE) --out $(WITH_PLT_LOD_FILE); \
 			if [ $$? -gt 0 ]; then \
-				${ECHO} "LODCOMBINE        Combine failed";   \
+				${ECHO} "[LODCOMBINE]        Combine failed";   \
 				exit 1; \
 			fi;\
-			${ECHO} "LODCOMBINE        Combine sucessful";                                     \
+			mv $(LOD_FILE) $(LODBASE)flash_${CT_RELEASE}.lod;\
+			${COLOR_GREEN}                             \
+			${ECHO} "[LODCOMBINE]        Combine sucessful";                                     \
+			${COLOR_NORMAL}                                \
 		else                                                                                    \
-			${ECHO} "LODCOMBINE        Cannot find Platform lod file:$(AM_PLT_LOD_FILE)";   \
+			${ECHO} "[LODCOMBINE]        Cannot find Platform lod file:$(AM_PLT_LOD_FILE)";   \
 		fi;                                                                                     \
 	else                                                                                        \
-		${ECHO} "LODCOMBINE        Cannot find lod file:$(LOD_FILE)";		            \
+		${ECHO} "[LODCOMBINE]        Cannot find lod file:$(LOD_FILE)";		            \
 	fi;
 endif
 endif #	USER_LOADER_SUPPORT
@@ -696,11 +751,12 @@ ${HEX}: force
 ${BIN}: dependencies ${FULL_SRC_OBJECTS} ${FULL_LIBRARY_FILES} | ${BIN_PATH} ${BINARY_PATH}
 	@${ECHO}
 	#
-	@${ECHO} "LDGEN  by ${AM_MODEL}    ${notdir ${LD_FILE}}"
+	@${ECHO} "-----------------------------------------------"
+	@${ECHO} "[LDGEN]             >>> ${notdir ${LD_FILE}}"
 	test -f ${LD_FILE} && chmod +w ${LD_FILE} || echo ""
 	${LDPP} ${LDPPFLAGS} ${LD_SRC} > ${LD_FILE}
 	#
-	@${ECHO} "LD                ${notdir ${BIN}}"
+	@${ECHO} "[LD]                ${notdir ${BIN}}"
 	${LD} -nostdlib -o ${BIN} ${OFORMAT} ${FULL_SRC_OBJECTS} ${LD_OPTIONAL_OBJECTS} \
 		${LDFLAG_USED_ELF_FILES}	\
 		--script ${LD_FILE} \
@@ -712,7 +768,7 @@ ifneq "${IS_DLL_ENTRY}" "yes"
 ifneq "${AM_PLT_ELF_FILE}" ""
 #/*+\NEW\xiongjunqun\2014.03.25\����open loader*/#
 ifeq ($(strip $(USER_LOADER_SUPPORT)), )
-	@${ECHO} "ElfCombine        Elf binary & map file"
+	@${ECHO} "[ElfCombine]        Elf binary & map file"
 
 	#��ƽ̨��cust elf������hexĿ¼�²�����ԭ����elf����ԭʼĿ¼����ԭ��
 	${CP} -f ${BIN} ${BINARY_PATH}
@@ -722,7 +778,9 @@ ifeq ($(strip $(USER_LOADER_SUPPORT)), )
 	@${ECHO}
 	# ${ECHO} "GEN ${BIN} and ${BINARY_PATH} and ${AM_PLT_ELF_FILE}   "
 	# ${ECHO} "${BAS} := ${BIN_PATH}/***${LODBASE_NO_PATH}"
-	${ECHO} "GEN               stripped (rm syms) elf file ${notdir ${BIN}}"
+	${ECHO} "[GEN]               strip platform symbol"
+	${ECHO} "                    |"
+	${ECHO} "                     --${STRIP_SYMBOL_FILE}"
 	${OBJCOPY} --strip-symbols=${STRIP_SYMBOL_FILE} ${BAS_FINAL}.elf ${BAS_FINAL}.elf
 	
 	#�ϲ�elf
@@ -749,9 +807,70 @@ else
 endif
 endif
 
+# Whether to extract object files from sub libraries and archive into local library
+COMBINE_LIB ?= yes
+# Explode sub-modules libraries
+LOCAL_SUBMODULE_LIBRARY_EXPLODE_CMD = cd ${OBJ_REL_PATH} && $(AR) x ${libfile} && ${ECHO} "        |" && ${ECHO} "         -- ${notdir $(libfile)}"
+LOCAL_SUBMODULE_LIBRARY_EXPLODE := ${foreach libfile, $(FULL_LIBRARY_FILES) , $(LOCAL_SUBMODULE_LIBRARY_EXPLODE_CMD) &&}
+# The local library is different in a module that depends on submodules, 
+# since we need to depend on the submodules, and add them to the archive...
+# No lib is generated for ENTRY_POINT dirs
+ifneq "${IS_ENTRY_POINT}" "yes"
+ifeq "${IS_TOP_LEVEL_}" "yes"
+# We are building a module with submodules
+# This module depends on:
+# 	The directories which save the built objects or files
+# 	The submodules that need to be compiled (listed in LOCAL_MODULE_DEPENDS, target "dependencies")
+# 	The local sources that go in the library
+# 	The binary library files
+# 	The local library files
+# We need to explode the binary sub library into objects
+# We need to copy the all objects from the submodules in the obj directory of this module
+$(LOCAL_SRCLIBRARY): dependencies ${BINARY_LIBRARY_FILES} ${LOCAL_ADD_LIBRARY_FILES} | makedirs
+ifneq "$(FULL_SRC_OBJECTS)" ""
+# headergen might change some header files. If the local source objects are listed
+# as prerequisites, make has checked the timestamp of the header files before they
+# are modified, and the objects will not be rebuilt in this make.
+	${MAKE} $(FULL_SRC_OBJECTS)
+
+endif
+	${COLOR_PURPLE}
+	@${ECHO} "[AR]   ${notdir ${LOCAL_SRCLIBRARY}}"
+ifneq "${COMBINE_LIB}" "yes"
+	echo "/* ${LOCAL_SRCLIBRARY} */" > ${LOCAL_SRCLIBRARY}
+	for libfile in $(FULL_LIBRARY_FILES); do \
+		if head -1 $$libfile | grep '!<arch>' &> /dev/null; then \
+			echo "INPUT($$libfile)" >> ${LOCAL_SRCLIBRARY}; \
+		else \
+			cat $$libfile >> ${LOCAL_SRCLIBRARY}; \
+		fi; \
+	done
+ifneq "$(FULL_SRC_OBJECTS)" ""
+	$(AR) cru  ${LOCAL_SRCLIBRARY}l $(FULL_SRC_OBJECTS)
+	echo "INPUT(${LOCAL_SRCLIBRARY}l)" >> ${LOCAL_SRCLIBRARY}
+endif
+else
+	${LOCAL_SUBMODULE_LIBRARY_EXPLODE} ${ECHO} " "
+	${COLOR_NORMAL}
+	if find ${OBJ_REL_PATH} -name "*.o" | sort >${LOCAL_SRCLIBRARY}.l 2>/dev/null; \
+		then $(AR) cru 	${LOCAL_SRCLIBRARY} @${LOCAL_SRCLIBRARY}.l; \
+		else $(AR) cq 	${LOCAL_SRCLIBRARY}; \
+	fi;
+endif # COMBINE_LIB
+ifneq "$(DEPS_NOT_IN_SUBDIR)" ""
+	@${ECHO} "--- DEPS_NOT_IN_SUBDIR ---"
+	@${ECHO} " $(DEPS_NOT_IN_SUBDIR)"
+endif # DEPS_NOT_IN_SUBDIR
+
+else # !IS_TOP_LEVEL_
+
 $(LOCAL_SRCLIBRARY): ${FULL_SRC_OBJECTS} | makedirs ccflagoutput
-	@${ECHO} "AR                ${notdir ${LOCAL_SRCLIBRARY}}"
+	${COLOR_PURPLE}
+	@${ECHO} "[AR]   ${notdir ${LOCAL_SRCLIBRARY}}"
+	${COLOR_NORMAL}
 	$(AR) cru ${LOCAL_SRCLIBRARY} ${FULL_SRC_OBJECTS} ${STDERR_NULL} || ${ECHO} "	Error in AR"
+endif # IS_TOP_LEVEL_
+endif # IS_ENTRY_POINT
 
 ccflagoutput: force
 	if [ ! -d ${OBJ_REL_PATH} ]; then mkdir -p ${OBJ_REL_PATH}; fi;
@@ -850,13 +969,17 @@ CT_MIPS16_CFLAGS += -mips16
 ASFLAGS += -march=xcpu -mtune=xcpu -EL 
 
 #------------------- cpp file flags --------------------------------------
-C++_SPECIFIC_CFLAGS += -Wno-write-strings
+CXX_SPECIFIC_CFLAGS += -Wno-write-strings \
+                       -fno-rtti 
 
 #------------------- pp file flags --------------------------------------
 ASCPPFLAGS += -DCT_ASM
 MYCPPFLAGS += -D__NEW_GCC__ \
               -DUSE_GCC_4=1 -DUSE_BINUTILS_2_19=1 \
-              -D__REDUCED_REGS__
+              -D__REDUCED_REGS__ \
+			  -D__ORDER_LITTLE_ENDIAN__=1234 \
+			  -D__ORDER_BIG_ENDIAN__=4321 \
+			  -D__BYTE_ORDER__=__ORDER_LITTLE_ENDIAN__ 
 
 # User flags
 LOCAL_EXPORT_FLAG += PRONAME_MAIN=$(PROJ_NAME)_Main
@@ -871,18 +994,28 @@ CPPFLAGS	= ${INCLUDE_PATH} -DEL ${MYCPPFLAGS}
 # Those depfiles are also board depend (to deal with conditional includes)
 # Empty rules are generated for all header files, to avoid issues in case one header is deleted (-MP)
 ${OBJ_REL_PATH}/%.o: ${LOCAL_SRC_DIR}/%.S
-	@${ECHO} "CPP               $*.S"
+	echo "[CPP]  %-27s <== %s\n" "$(notdir $*.asm)" "$(notdir $*.S)"
+	mkdir -p ${dir ${OBJ_REL_PATH}/$*.o}
+	mkdir -p ${dir ${DEPS_REL_PATH}/$*.d}
 	$(CPP) $(CPPFLAGS) $(ASCPPFLAGS)  -MT ${OBJ_REL_PATH}/$*.o -MD -MP -MF ${DEPS_REL_PATH}/$*.d -o ${OBJ_REL_PATH}/$*.asm $(REALPATH)
-	@${ECHO} "AS                $*.asm"
+	echo "[AS]   %-27s <== %s\n" "$(notdir $*.o)" "$(notdir $*.asm)"
 	$(AS) $(ASFLAGS) -o ${OBJ_REL_PATH}/$*.o ${OBJ_REL_PATH}/$*.asm
 
 ${OBJ_REL_PATH}/%.o: ${LOCAL_SRC_DIR}/%.c
-	@${ECHO} "CC                $*.c"
+	${COLOR_CYAN}
+	printf "[CC]   %-27s <== %s\n" "$(notdir $*.o)" "$(notdir $*.c)"
+	${COLOR_NORMAL}
+	mkdir -p ${dir ${OBJ_REL_PATH}/$*.o}
+	mkdir -p ${dir ${DEPS_REL_PATH}/$*.d}
 	$(CC) -MT ${OBJ_REL_PATH}/$*.o -MD -MP -MF ${DEPS_REL_PATH}/$*.d $(C_SPECIFIC_CFLAGS) $(CFLAGS) $(CT_MIPS16_CFLAGS) $(MYCFLAGS) $(CPPFLAGS)  -o ${OBJ_REL_PATH}/$*.o $(REALPATH)
 
 ${OBJ_REL_PATH}/%.o: ${LOCAL_SRC_DIR}/%.cpp
-	@${ECHO} "C++               $*.cpp"
-	$(C++) -MT ${OBJ_REL_PATH}/$*.o -MD -MP -MF ${DEPS_REL_PATH}/$*.d $(C++_SPECIFIC_CFLAGS) $(CFLAGS) $(CT_MIPS16_CFLAGS) $(MYCFLAGS) $(CPPFLAGS)  -o ${OBJ_REL_PATH}/$*.o $(REALPATH) $(EXTERN_CPPFLAGS)
+	${COLOR_CYAN}
+	printf "[CXX]  %-27s <== %s\n" "$(notdir $*.o)" "$(notdir $*.cpp)"
+	${COLOR_NORMAL}
+	mkdir -p ${dir ${OBJ_REL_PATH}/$*.o}
+	mkdir -p ${dir ${DEPS_REL_PATH}/$*.d}
+	$(CXX) -MT ${OBJ_REL_PATH}/$*.o -MD -MP -MF ${DEPS_REL_PATH}/$*.d $(CXX_SPECIFIC_CFLAGS) $(CFLAGS) $(CT_MIPS16_CFLAGS) $(MYCFLAGS) $(CPPFLAGS)  -o ${OBJ_REL_PATH}/$*.o $(REALPATH) $(EXTERN_CPPFLAGS)
 
 # The libraries are always generated before. This rule respond allways true.
 %.a:
